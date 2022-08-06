@@ -2,11 +2,19 @@
  * Macros for asm code.
  *
  * Copyright (c) 2019-2020, Arm Limited.
- * SPDX-License-Identifier: MIT
+ * SPDX-License-Identifier: MIT OR Apache-2.0 WITH LLVM-exception
  */
 
 #ifndef _ASMDEFS_H
 #define _ASMDEFS_H
+
+#if defined (__arm__)
+#define ARM_FNSTART .fnstart
+#define ARM_FNEND .fnend
+#else
+#define ARM_FNSTART
+#define ARM_FNEND
+#endif
 
 #if defined(__aarch64__)
 
@@ -52,6 +60,7 @@ GNU_PROPERTY (FEATURE_1_AND, FEATURE_1_BTI|FEATURE_1_PAC)
   .type name,%function;	\
   .align alignment;		\
   name:			\
+  ARM_FNSTART;		\
   .cfi_startproc;	\
   BTI_C;
 
@@ -64,6 +73,7 @@ GNU_PROPERTY (FEATURE_1_AND, FEATURE_1_BTI|FEATURE_1_PAC)
   .type name,%function;	\
   .align alignment;		\
   name:			\
+  ARM_FNSTART;		\
   .cfi_startproc;
 
 #endif
@@ -77,6 +87,7 @@ GNU_PROPERTY (FEATURE_1_AND, FEATURE_1_BTI|FEATURE_1_PAC)
 
 #define END(name)	\
   .cfi_endproc;		\
+  ARM_FNEND;		\
   .size name, .-name;
 
 #define L(l) .L ## l
