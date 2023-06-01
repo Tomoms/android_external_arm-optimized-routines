@@ -1,103 +1,96 @@
 /*
  * Double-precision vector sin function.
  *
- * Copyright (c) 2019-2022, Arm Limited.
+ * Copyright (c) 2019-2023, Arm Limited.
  * SPDX-License-Identifier: MIT OR Apache-2.0 WITH LLVM-exception
  */
 
 #include "mathlib.h"
 #include "v_math.h"
-#if V_SUPPORTED
 
-static const double Poly[] = {
-/* worst-case error is 3.5 ulp.
-   abs error: 0x1.be222a58p-53 in [-pi/2, pi/2].  */
--0x1.9f4a9c8b21dc9p-41,
- 0x1.60e88a10163f2p-33,
--0x1.ae6361b7254e7p-26,
- 0x1.71de382e8d62bp-19,
--0x1.a01a019aeb4ffp-13,
- 0x1.111111110b25ep-7,
--0x1.55555555554c3p-3,
+static const volatile struct __v_sin_data
+{
+  float64x2_t poly[7];
+  float64x2_t range_val, inv_pi, shift, pi_1, pi_2, pi_3;
+} data =
+{
+  /* Worst-case error is 2.8 ulp in [-pi/2, pi/2].  */
+  .poly =
+    {
+      V2 (-0x1.555555555547bp-3),
+      V2 (0x1.1111111108a4dp-7),
+      V2 (-0x1.a01a019936f27p-13),
+      V2 (0x1.71de37a97d93ep-19),
+      V2 (-0x1.ae633919987c6p-26),
+      V2 (0x1.60e277ae07cecp-33),
+      V2 (-0x1.9e9540300a1p-41),
+    },
+
+  .range_val = V2 (0x1p23),
+  .inv_pi = V2 (0x1.45f306dc9c883p-2),
+  .pi_1 = V2 (0x1.921fb54442d18p+1),
+  .pi_2 = V2 (0x1.1a62633145c06p-53),
+  .pi_3 = V2 (0x1.c1cd129024e09p-106),
+  .shift = V2 (0x1.8p52),
 };
 
-#define C7 v_f64 (Poly[0])
-#define C6 v_f64 (Poly[1])
-#define C5 v_f64 (Poly[2])
-#define C4 v_f64 (Poly[3])
-#define C3 v_f64 (Poly[4])
-#define C2 v_f64 (Poly[5])
-#define C1 v_f64 (Poly[6])
-
-#define InvPi v_f64 (0x1.45f306dc9c883p-2)
-#define Pi1 v_f64 (0x1.921fb54442d18p+1)
-#define Pi2 v_f64 (0x1.1a62633145c06p-53)
-#define Pi3 v_f64 (0x1.c1cd129024e09p-106)
-#define Shift v_f64 (0x1.8p52)
-#define AbsMask v_u64 (0x7fffffffffffffff)
-
 #if WANT_SIMD_EXCEPT
-#define TinyBound 0x202 /* top12 (asuint64 (0x1p-509)).  */
-#define Thresh 0x214	/* top12 (asuint64 (RangeVal)) - TinyBound.  */
-#else
-#define RangeVal v_f64 (0x1p23)
+# define TinyBound v_u64 (0x3000000000000000) /* asuint64 (0x1p-255).  */
+# define Thresh v_u64 (0x1160000000000000)    /* RangeVal - TinyBound.  */
 #endif
 
-VPCS_ATTR
-__attribute__ ((noinline)) static v_f64_t
-specialcase (v_f64_t x, v_f64_t y, v_u64_t cmp)
+#define C(i) data.poly[i]
+
+static float64x2_t VPCS_ATTR NOINLINE
+special_case (float64x2_t x, float64x2_t y, uint64x2_t odd, uint64x2_t cmp)
 {
+  y = vreinterpretq_f64_u64 (veorq_u64 (vreinterpretq_u64_f64 (y), odd));
   return v_call_f64 (sin, x, y, cmp);
 }
 
-VPCS_ATTR
-v_f64_t
-V_NAME(sin) (v_f64_t x)
+float64x2_t VPCS_ATTR V_NAME_D1 (sin) (float64x2_t x)
 {
-  v_f64_t n, r, r2, y;
-  v_u64_t sign, odd, cmp, ir;
-
-  ir = v_as_u64_f64 (x) & AbsMask;
-  r = v_as_f64_u64 (ir);
-  sign = v_as_u64_f64 (x) & ~AbsMask;
+  float64x2_t n, r, r2, r3, r4, y, t1, t2, t3;
+  uint64x2_t odd, cmp;
 
 #if WANT_SIMD_EXCEPT
-  /* Detect |x| <= 0x1p-509 or |x| >= RangeVal. If fenv exceptions are to be
+  /* Detect |x| <= TinyBound or |x| >= RangeVal. If fenv exceptions are to be
      triggered correctly, set any special lanes to 1 (which is neutral w.r.t.
-     fenv). These lanes will be fixed by specialcase later.  */
-  cmp = v_cond_u64 ((ir >> 52) - TinyBound >= Thresh);
-  if (unlikely (v_any_u64 (cmp)))
-    r = v_sel_f64 (cmp, v_f64 (1), r);
+     fenv). These lanes will be fixed by special-case handler later.  */
+  uint64x2_t ir = vreinterpretq_u64_f64 (vabsq_f64 (x));
+  cmp = vcgeq_u64 (vsubq_u64 (ir, TinyBound), Thresh);
+  r = vbslq_f64 (cmp, vreinterpretq_f64_u64 (cmp), x);
 #else
-  cmp = v_cond_u64 (ir >= v_as_u64_f64 (RangeVal));
+  r = x;
+  cmp = vcageq_f64 (data.range_val, x);
+  cmp = vceqzq_u64 (cmp);	/* cmp = ~cmp.  */
 #endif
 
   /* n = rint(|x|/pi).  */
-  n = v_fma_f64 (InvPi, r, Shift);
-  odd = v_as_u64_f64 (n) << 63;
-  n -= Shift;
+  n = vfmaq_f64 (data.shift, data.inv_pi, r);
+  odd = vshlq_n_u64 (vreinterpretq_u64_f64 (n), 63);
+  n = vsubq_f64 (n, data.shift);
 
   /* r = |x| - n*pi  (range reduction into -pi/2 .. pi/2).  */
-  r = v_fma_f64 (-Pi1, n, r);
-  r = v_fma_f64 (-Pi2, n, r);
-  r = v_fma_f64 (-Pi3, n, r);
+  r = vfmsq_f64 (r, data.pi_1, n);
+  r = vfmsq_f64 (r, data.pi_2, n);
+  r = vfmsq_f64 (r, data.pi_3, n);
 
   /* sin(r) poly approx.  */
-  r2 = r * r;
-  y = v_fma_f64 (C7, r2, C6);
-  y = v_fma_f64 (y, r2, C5);
-  y = v_fma_f64 (y, r2, C4);
-  y = v_fma_f64 (y, r2, C3);
-  y = v_fma_f64 (y, r2, C2);
-  y = v_fma_f64 (y, r2, C1);
-  y = v_fma_f64 (y * r2, r, r);
+  r2 = vmulq_f64 (r, r);
+  r3 = vmulq_f64 (r2, r);
+  r4 = vmulq_f64 (r2, r2);
 
-  /* sign.  */
-  y = v_as_f64_u64 (v_as_u64_f64 (y) ^ sign ^ odd);
+  t1 = vfmaq_f64 (C (4), C (5), r2);
+  t2 = vfmaq_f64 (C (2), C (3), r2);
+  t3 = vfmaq_f64 (C (0), C (1), r2);
+
+  y = vfmaq_f64 (t1, C (6), r4);
+  y = vfmaq_f64 (t2, y, r4);
+  y = vfmaq_f64 (t3, y, r4);
+  y = vfmaq_f64 (r, y, r3);
 
   if (unlikely (v_any_u64 (cmp)))
-    return specialcase (x, y, cmp);
-  return y;
+    return special_case (x, y, odd, cmp);
+  return vreinterpretq_f64_u64 (veorq_u64 (vreinterpretq_u64_f64 (y), odd));
 }
-VPCS_ALIAS
-#endif

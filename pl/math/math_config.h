@@ -377,6 +377,14 @@ extern const struct exp_data
   uint64_t tab[2*(1 << EXP_TABLE_BITS)];
 } __exp_data HIDDEN;
 
+/* Copied from math/v_exp.h for use in vector exp_tail.  */
+#define V_EXP_TAIL_TABLE_BITS 8
+extern const uint64_t __v_exp_tail_data[1 << V_EXP_TAIL_TABLE_BITS] HIDDEN;
+
+/* Copied from math/v_exp.h for use in vector exp2.  */
+#define V_EXP_TABLE_BITS 7
+extern const uint64_t __v_exp_data[1 << V_EXP_TABLE_BITS] HIDDEN;
+
 #define ERFC_NUM_INTERVALS 20
 #define ERFC_POLY_ORDER 12
 extern const struct erfc_data
@@ -394,10 +402,14 @@ extern const struct v_erfc_data
 extern const struct erfcf_poly_data
 {
   double poly[4][ERFCF_POLY_NCOEFFS];
+  double poly_T[ERFCF_POLY_NCOEFFS][4];
 } __erfcf_poly_data HIDDEN;
 
 #define V_EXP_TAIL_TABLE_BITS 8
 extern const uint64_t __v_exp_tail_data[1 << V_EXP_TAIL_TABLE_BITS] HIDDEN;
+
+#define V_EXP_TABLE_BITS 7
+extern const uint64_t __v_exp_data[1 << V_EXP_TABLE_BITS] HIDDEN;
 
 #define V_ERF_NINTS 49
 #define V_ERF_NCOEFFS 10
@@ -498,12 +510,6 @@ extern const struct v_log2_data
   } tab[1 << V_LOG2_TABLE_BITS];
 } __v_log2_data HIDDEN;
 
-#define V_SINF_NCOEFFS 4
-extern const struct sv_sinf_data
-{
-  float coeffs[V_SINF_NCOEFFS];
-} __sv_sinf_data HIDDEN;
-
 #define V_LOG10_TABLE_BITS 7
 #define V_LOG10_POLY_ORDER 6
 extern const struct v_log10_data
@@ -519,23 +525,47 @@ extern const struct v_log10_data
 #define V_LOG10F_POLY_ORDER 9
 extern const float __v_log10f_poly[V_LOG10F_POLY_ORDER - 1] HIDDEN;
 
-#define SV_LOGF_POLY_ORDER 8
-extern const float __sv_logf_poly[SV_LOGF_POLY_ORDER - 1] HIDDEN;
-
-#define SV_LOG_POLY_ORDER 6
-#define SV_LOG_TABLE_BITS 7
-extern const struct sv_log_data
+/* Some data for SVE powf's internal exp and log.  */
+#define SV_POWF_EXP2_TABLE_BITS 5
+#define SV_POWF_EXP2_POLY_ORDER 3
+#define SV_POWF_EXP2_N (1 << SV_POWF_EXP2_TABLE_BITS)
+#define SV_POWF_EXP2_SCALE ((double) SV_POWF_EXP2_N)
+extern const struct sv_powf_exp2_data
 {
-  double invc[1 << SV_LOG_TABLE_BITS];
-  double logc[1 << SV_LOG_TABLE_BITS];
-  double poly[SV_LOG_POLY_ORDER - 1];
-} __sv_log_data HIDDEN;
+  uint64_t tab[SV_POWF_EXP2_N];
+  double poly[SV_POWF_EXP2_POLY_ORDER];
+} __sv_powf_exp2_data HIDDEN;
+
+#define SV_POWF_LOG2_TABLE_BITS 5
+#define SV_POWF_LOG2_POLY_ORDER 4
+#define SV_POWF_LOG2_N (1 << SV_POWF_LOG2_TABLE_BITS)
+extern const struct sv_powf_log2_data
+{
+  double invc[SV_POWF_LOG2_N];
+  double logc[SV_POWF_LOG2_N];
+  double poly[SV_POWF_LOG2_POLY_ORDER];
+} __sv_powf_log2_data HIDDEN;
+
+#define V_LOG_POLY_ORDER 6
+#define V_LOG_TABLE_BITS 7
+extern const struct v_log_data
+{
+  /* Shared data for vector log and log-derived routines (e.g. asinh).  */
+  double poly[V_LOG_POLY_ORDER - 1];
+  double ln2;
+  double invc[1 << V_LOG_TABLE_BITS];
+  double logc[1 << V_LOG_TABLE_BITS];
+} __v_log_data HIDDEN;
 
 #ifndef SV_EXPF_USE_FEXPA
 #define SV_EXPF_USE_FEXPA 0
 #endif
-#define SV_EXPF_POLY_ORDER 6
-extern const float __sv_expf_poly[SV_EXPF_POLY_ORDER - 1] HIDDEN;
+
+#ifndef SV_EXP2F_USE_FEXPA
+#define SV_EXP2F_USE_FEXPA 0
+#endif
+#define SV_EXP2F_POLY_ORDER 6
+extern const float __sv_exp2f_poly[SV_EXP2F_POLY_ORDER - 1] HIDDEN;
 
 #define EXPM1F_POLY_ORDER 5
 extern const float __expm1f_poly[EXPM1F_POLY_ORDER] HIDDEN;
@@ -564,9 +594,35 @@ extern const struct cbrt_data
   double table[5];
 } __cbrt_data HIDDEN;
 
-extern const struct v_tan_data
+#define ASINF_POLY_ORDER 4
+extern const float __asinf_poly[ASINF_POLY_ORDER + 1] HIDDEN;
+
+#define ASIN_POLY_ORDER 11
+extern const double __asin_poly[ASIN_POLY_ORDER + 1] HIDDEN;
+
+/* Some data for Neon and SVE pow's internal exp and log.  */
+#define V_POW_EXP_TABLE_BITS 8
+#define V_POW_EXP_POLY_ORDER 4
+extern const struct v_pow_exp_data
 {
-  double neg_half_pi_hi, neg_half_pi_lo;
-  double poly[9];
-} __v_tan_data HIDDEN;
+  double invln2N;
+  double shift;
+  double negln2hiN;
+  double negln2loN;
+  double poly[4]; /* Last four coefficients.  */
+  uint64_t sbits[1 << V_POW_EXP_TABLE_BITS];
+} __v_pow_exp_data HIDDEN;
+
+#define V_POW_LOG_TABLE_BITS 7
+#define V_POW_LOG_POLY_ORDER 8
+extern const struct v_pow_log_data
+{
+  double ln2hi;
+  double ln2lo;
+  double poly[V_POW_LOG_POLY_ORDER - 1]; /* First coefficient is 1.  */
+  double invc[1 << V_POW_LOG_TABLE_BITS];
+  double logc[1 << V_POW_LOG_TABLE_BITS];
+  double logctail[1 << V_POW_LOG_TABLE_BITS];
+} __v_pow_log_data HIDDEN;
+
 #endif

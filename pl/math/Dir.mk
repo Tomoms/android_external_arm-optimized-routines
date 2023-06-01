@@ -8,6 +8,11 @@ AOR := $(srcdir)/math
 B := build/pl/math
 
 math-lib-srcs := $(wildcard $(PLM)/*.[cS])
+
+ifeq ($(WANT_SVE_MATH), 0)
+math-lib-srcs := $(filter-out $(PLM)/sv_%, $(math-lib-srcs))
+endif
+
 math-test-srcs := \
 	$(AOR)/test/mathtest.c \
 	$(AOR)/test/mathbench.c \
@@ -206,6 +211,7 @@ check-pl/math-ulp: $(math-tools) $(ulp-lims) $(ulp-aliases) $(fenv-exps) $(ulp-i
 	ALIASES=../../../$(ulp-aliases) \
 	INTERVALS=../../../$(ulp-itvs) \
 	FENV=../../../$(fenv-exps) \
+	FUNC=$(func) \
 	build/pl/bin/runulp.sh $(EMULATOR)
 
 check-pl/math: check-pl/math-test check-pl/math-rtest check-pl/math-ulp

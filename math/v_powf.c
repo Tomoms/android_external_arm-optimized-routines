@@ -1,13 +1,12 @@
 /*
  * Single-precision vector powf function.
  *
- * Copyright (c) 2019, Arm Limited.
+ * Copyright (c) 2019-2023, Arm Limited.
  * SPDX-License-Identifier: MIT OR Apache-2.0 WITH LLVM-exception
  */
 
 #include "mathlib.h"
 #include "v_math.h"
-#if V_SUPPORTED
 
 #define Min v_u32 (0x00800000)
 #define Max v_u32 (0x7f800000)
@@ -136,28 +135,25 @@ static const struct v_exp2f_data v__exp2f_data = {
   },
 };
 
-VPCS_ATTR
-__attribute__ ((noinline)) static v_f32_t
-specialcase (v_f32_t x, v_f32_t y, v_f32_t ret, v_u32_t cmp)
+static float32x4_t VPCS_ATTR NOINLINE
+specialcase (float32x4_t x, float32x4_t y, float32x4_t ret, uint32x4_t cmp)
 {
   return v_call2_f32 (powf, x, y, ret, cmp);
 }
 
-VPCS_ATTR
-v_f32_t
-V_NAME(powf) (v_f32_t x, v_f32_t y)
+float32x4_t VPCS_ATTR V_NAME_F2 (pow) (float32x4_t x, float32x4_t y)
 {
-  v_u32_t u, tmp, cmp, i, top, iz;
-  v_s32_t k;
-  v_f32_t ret;
+  uint32x4_t u, tmp, cmp, i, top, iz;
+  int32x4_t k;
+  float32x4_t ret;
 
-  u = v_as_u32_f32 (x);
-  cmp = v_cond_u32 (u - Min >= Max - Min);
+  u = vreinterpretq_u32_f32 (x);
+  cmp = u - Min >= Max - Min;
   tmp = u - OFF;
   i = (tmp >> (23 - TBITS)) % (1 << TBITS);
   top = tmp & 0xff800000;
   iz = u - top;
-  k = v_as_s32_u32 (top) >> (23 - SBITS); /* arithmetic shift */
+  k = vreinterpretq_s32_u32 (top) >> (23 - SBITS); /* arithmetic shift.  */
 
   for (int lane = 0; lane < v_lanes32 (); lane++)
     {
@@ -231,5 +227,3 @@ V_NAME(powf) (v_f32_t x, v_f32_t y)
     return specialcase (x, y, ret, cmp);
   return ret;
 }
-VPCS_ALIAS
-#endif
