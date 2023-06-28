@@ -5,31 +5,26 @@
  * SPDX-License-Identifier: MIT OR Apache-2.0 WITH LLVM-exception
  */
 
-#include "math_config.h"
+#include "v_math.h"
+
+# define N (1 << V_LOG_TABLE_BITS)
 
 const struct v_log_data __v_log_data = {
-  /* Worst-case error: 1.17 + 0.5 ulp.
-     Rel error: 0x1.6272e588p-56 in [ -0x1.fc1p-9 0x1.009p-8 ].  */
-  .poly = { -0x1.ffffffffffff7p-2, 0x1.55555555170d4p-2, -0x1.0000000399c27p-2,
-	    0x1.999b2e90e94cap-3, -0x1.554e550bd501ep-3 },
-  .ln2 = 0x1.62e42fefa39efp-1,
   /* Algorithm:
 
 	x = 2^k z
 	log(x) = k ln2 + log(c) + poly(z/c - 1)
 
-     where z is in [a;2a) which is split into N subintervals (a=0x1.69009p-1,
-     N=128) and log(c) and 1/c for the ith subinterval comes from two lookup
-     tables:
+  where z is in [a;2a) which is split into N subintervals (a=0x1.69009p-1,
+  N=128) and log(c) and 1/c for the ith subinterval comes from lookup tables:
 
 	invc[i] = 1/c
 	logc[i] = (double)log(c)
 
-     where c is near the center of the subinterval and is chosen by trying
-     several floating point invc candidates around 1/center and selecting one
-     for which the error in (double)log(c) is minimized (< 0x1p-74), except the
-     subinterval that contains 1 and the previous one got tweaked to avoid
-     cancellation.  */
+  where c is near the center of the subinterval and is chosen by trying several
+  floating point invc candidates around 1/center and selecting one for which
+  the error in (double)log(c) is minimized (< 0x1p-74), except the subinterval
+  that contains 1 and the previous one got tweaked to avoid cancellation.  */
   .invc = { 0x1.6a133d0dec120p+0, 0x1.6815f2f3e42edp+0,
 	    0x1.661e39be1ac9ep+0, 0x1.642bfa30ac371p+0,
 	    0x1.623f1d916f323p+0, 0x1.60578da220f65p+0,

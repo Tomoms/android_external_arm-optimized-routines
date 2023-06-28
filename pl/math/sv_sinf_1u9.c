@@ -6,30 +6,31 @@
  */
 
 #include "sv_math.h"
-#include "sv_hornerf.h"
 #include "pl_sig.h"
 #include "pl_test.h"
 
-struct __sv_sinf_data
+static const struct data
 {
   float poly[4];
   /* Pi-related values to be loaded as one quad-word and used with
      svmla_lane_f32.  */
   float negpi1, negpi2, negpi3, invpi;
   float shift;
-};
-
-static struct __sv_sinf_data data = {
-  /* Non-zero coefficients from the degree 9 Taylor series expansion of sin.  */
-  .poly = {-0x1.555548p-3f, 0x1.110df4p-7f, -0x1.9f42eap-13f, 0x1.5b2e76p-19f},
+} data = {
+  .poly = {
+    /* Non-zero coefficients from the degree 9 Taylor series expansion of
+       sin.  */
+    -0x1.555548p-3f, 0x1.110df4p-7f, -0x1.9f42eap-13f, 0x1.5b2e76p-19f
+  },
   .negpi1 = -0x1.921fb6p+1f,
   .negpi2 = 0x1.777a5cp-24f,
   .negpi3 = 0x1.ee59dap-49f,
   .invpi = 0x1.45f306p-2f,
-  .shift = 0x1.8p+23f};
+  .shift = 0x1.8p+23f
+};
 
 #define RangeVal 0x49800000 /* asuint32 (0x1p20f).  */
-#define C(i) data.poly[i]
+#define C(i) sv_f32 (d->poly[i])
 
 static svfloat32_t NOINLINE
 special_case (svfloat32_t x, svfloat32_t y, svbool_t cmp)
@@ -44,19 +45,21 @@ special_case (svfloat32_t x, svfloat32_t y, svbool_t cmp)
    SV_NAME_F1 (sin)(0x1.9247a4p+0) got 0x1.fffff6p-1 want 0x1.fffffap-1.  */
 svfloat32_t SV_NAME_F1 (sin) (svfloat32_t x, const svbool_t pg)
 {
+  const struct data *d = ptr_barrier (&data);
+
   svfloat32_t ax = svabs_f32_x (pg, x);
-  svuint32_t sign
-    = sveor_u32_x (pg, svreinterpret_u32_f32 (x), svreinterpret_u32_f32 (ax));
+  svuint32_t sign = sveor_u32_x (pg, svreinterpret_u32_f32 (x),
+				 svreinterpret_u32_f32 (ax));
   svbool_t cmp = svcmpge_n_u32 (pg, svreinterpret_u32_f32 (ax), RangeVal);
 
-  /* pi_vals are a quad-word of helper values - the first 3 elements contain -pi
-     in extended precision, the last contains 1 / pi.  */
-  svfloat32_t pi_vals = svld1rq_f32 (pg, &data.negpi1);
+  /* pi_vals are a quad-word of helper values - the first 3 elements contain
+     -pi in extended precision, the last contains 1 / pi.  */
+  svfloat32_t pi_vals = svld1rq_f32 (svptrue_b32 (), &d->negpi1);
 
   /* n = rint(|x|/pi).  */
-  svfloat32_t n = svmla_lane_f32 (sv_f32 (data.shift), ax, pi_vals, 3);
+  svfloat32_t n = svmla_lane_f32 (sv_f32 (d->shift), ax, pi_vals, 3);
   svuint32_t odd = svlsl_n_u32_x (pg, svreinterpret_u32_f32 (n), 31);
-  n = svsub_n_f32_x (pg, n, data.shift);
+  n = svsub_n_f32_x (pg, n, d->shift);
 
   /* r = |x| - n*pi  (range reduction into -pi/2 .. pi/2).  */
   svfloat32_t r;
@@ -67,12 +70,15 @@ svfloat32_t SV_NAME_F1 (sin) (svfloat32_t x, const svbool_t pg)
   /* sin(r) approx using a degree 9 polynomial from the Taylor series
      expansion. Note that only the odd terms of this are non-zero.  */
   svfloat32_t r2 = svmul_f32_x (pg, r, r);
-  svfloat32_t y = HORNER_3 (pg, r2, C);
+  svfloat32_t y;
+  y = svmla_f32_x (pg, C (2), r2, C (3));
+  y = svmla_f32_x (pg, C (1), r2, y);
+  y = svmla_f32_x (pg, C (0), r2, y);
   y = svmla_f32_x (pg, r, r, svmul_f32_x (pg, y, r2));
 
   /* sign = y^sign^odd.  */
-  y = svreinterpret_f32_u32 (
-    sveor_u32_x (pg, svreinterpret_u32_f32 (y), sveor_u32_x (pg, sign, odd)));
+  y = svreinterpret_f32_u32 (sveor_u32_x (pg, svreinterpret_u32_f32 (y),
+					  sveor_u32_x (pg, sign, odd)));
 
   if (unlikely (svptest_any (pg, cmp)))
     return special_case (x, y, cmp);

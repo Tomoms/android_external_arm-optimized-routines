@@ -143,6 +143,7 @@ Ldir=0.5
 done
 
 # vector functions
+
 Ldir=0.5
 r='n'
 flags="${ULPFLAGS:--q}"
@@ -171,9 +172,10 @@ range_pow='
 '
 
 range_sin='
-  0 0xffff000000000000 10000
-  0x1p-4     0x1p4     400000
- -0x1p-23    0x1p23    400000
+  0       0x1p23     500000
+ -0      -0x1p23     500000
+  0x1p23  inf        10000
+ -0x1p23 -inf        10000
 '
 range_cos="$range_sin"
 
@@ -193,9 +195,10 @@ range_logf='
 '
 
 range_sinf='
- 0    0xffff0000    10000
- 0x1p-4    0x1p4    300000
--0x1p-9   -0x1p9    300000
+  0        0x1p20   500000
+ -0       -0x1p20   500000
+  0x1p20   inf      10000
+ -0x1p20  -inf      10000
 '
 range_cosf="$range_sinf"
 
@@ -244,6 +247,7 @@ do
 		t $D $disable_fenv $F $X
 	done << EOF
 $range
+
 EOF
 done << EOF
 # group symbol run

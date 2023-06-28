@@ -9,20 +9,20 @@
 #include "pl_sig.h"
 #include "pl_test.h"
 
-struct sv_cos_data
+static const struct data
 {
   double inv_pio2, pio2_1, pio2_2, pio2_3, shift;
+} data = {
+  /* Polynomial coefficients are hardwired in FTMAD instructions.  */
+  .inv_pio2 = 0x1.45f306dc9c882p-1,
+  .pio2_1 = 0x1.921fb50000000p+0,
+  .pio2_2 = 0x1.110b460000000p-26,
+  .pio2_3 = 0x1.1a62633145c07p-54,
+  /* Original shift used in AdvSIMD cos,
+     plus a contribution to set the bit #0 of q
+     as expected by trigonometric instructions.  */
+  .shift = 0x1.8000000000001p52
 };
-
-static struct sv_cos_data data
-  = {.inv_pio2 = 0x1.45f306dc9c882p-1,
-     .pio2_1 = 0x1.921fb50000000p+0,
-     .pio2_2 = 0x1.110b460000000p-26,
-     .pio2_3 = 0x1.1a62633145c07p-54,
-     /* Original shift used in Neon cos,
-	plus a contribution to set the bit #0 of q
-	as expected by trigonometric instructions.  */
-     .shift = 0x1.8000000000001p52};
 
 #define RangeVal 0x4160000000000000 /* asuint64 (0x1p23).  */
 
@@ -39,18 +39,20 @@ special_case (svfloat64_t x, svfloat64_t y, svbool_t out_of_bounds)
 					 want -0x1.fddd4c65c7f05p-3.  */
 svfloat64_t SV_NAME_D1 (cos) (svfloat64_t x, const svbool_t pg)
 {
+  const struct data *d = ptr_barrier (&data);
+
   svfloat64_t r = svabs_f64_x (pg, x);
   svbool_t out_of_bounds
-    = svcmpge_n_u64 (pg, svreinterpret_u64_f64 (r), RangeVal);
+      = svcmpge_n_u64 (pg, svreinterpret_u64_f64 (r), RangeVal);
 
   /* Load some constants in quad-word chunks to minimise memory access.  */
-  svfloat64_t invpio2_and_pio2_1 = svld1rq_f64 (pg, &data.inv_pio2);
-  svfloat64_t pio2_23 = svld1rq_f64 (pg, &data.pio2_2);
+  svbool_t ptrue = svptrue_b64 ();
+  svfloat64_t invpio2_and_pio2_1 = svld1rq_f64 (ptrue, &d->inv_pio2);
+  svfloat64_t pio2_23 = svld1rq_f64 (ptrue, &d->pio2_2);
 
   /* n = rint(|x|/(pi/2)).  */
-  svfloat64_t q
-    = svmla_lane_f64 (sv_f64 (data.shift), r, invpio2_and_pio2_1, 0);
-  svfloat64_t n = svsub_n_f64_x (pg, q, data.shift);
+  svfloat64_t q = svmla_lane_f64 (sv_f64 (d->shift), r, invpio2_and_pio2_1, 0);
+  svfloat64_t n = svsub_n_f64_x (pg, q, d->shift);
 
   /* r = |x| - n*(pi/2)  (range reduction into -pi/4 .. pi/4).  */
   r = svmls_lane_f64 (r, n, invpio2_and_pio2_1, 1);
