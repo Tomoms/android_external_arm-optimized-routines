@@ -37,6 +37,8 @@ cc_defaults {
         // BSD libm doesn't set errno, and bionic was based on the BSDs.
         // https://github.com/ARM-software/optimized-routines/issues/16#issuecomment-572009659
         "-DWANT_ERRNO=0",
+        // Enable MOPS.
+        "-DWANT_MOPS=1",
     ],
     arch: {
         arm: {
@@ -123,9 +125,12 @@ cc_library_static {
                 "string/aarch64/memcmp.S",
                 "string/aarch64/memcpy-advsimd.S",
                 "string/aarch64/memcpy-sve.S",
+                "string/aarch64/memcpy-mops.S",
                 "string/aarch64/memcpy.S",
+                "string/aarch64/memmove-mops.S",
                 "string/aarch64/memrchr.S",
                 "string/aarch64/memset.S",
+                "string/aarch64/memset-mops.S",
                 "string/aarch64/stpcpy-sve.S",
                 "string/aarch64/stpcpy.S",
                 "string/aarch64/strchrnul-mte.S",
@@ -151,7 +156,6 @@ cc_library_static {
             ],
             asflags: [
                 "-march=armv8-a+sve",
-                "-D__memset_aarch64=memset",
                 "-D__memrchr_aarch64=memrchr",
             ]
         },
