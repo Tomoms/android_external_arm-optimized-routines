@@ -72,6 +72,16 @@ t pow  0x1.ffffffffffff0p-1  0x1.0000000000008p0 x 0x1p60 0x1p68 50000
 t pow  0x1.ffffffffff000p-1  0x1p0 x 0x1p50 0x1p52 50000
 t pow -0x1.ffffffffff000p-1 -0x1p0 x 0x1p50 0x1p52 50000
 
+L=0.02
+t exp10   0                   0x1p-47             5000
+t exp10  -0                  -0x1p-47             5000
+t exp10   0x1p-47             1                   50000
+t exp10  -0x1p-47            -1                   50000
+t exp10   1                   0x1.34413509f79ffp8 50000
+t exp10  -1                  -0x1.434e6420f4374p8 50000
+t exp10  0x1.34413509f79ffp8  inf                 5000
+t exp10 -0x1.434e6420f4374p8 -inf                 5000
+
 L=1.0
 Ldir=0.9
 t erf  0 0xffff000000000000 10000
@@ -254,14 +264,14 @@ done << EOF
 exp       _ZGVnN2v_exp
 log       _ZGVnN2v_log
 pow       _ZGVnN2vv_pow      -f
-sin       _ZGVnN2v_sin
+sin       _ZGVnN2v_sin       -z
 cos       _ZGVnN2v_cos
 expf      _ZGVnN4v_expf
 expf_1u   _ZGVnN4v_expf_1u   -f
 exp2f     _ZGVnN4v_exp2f
 exp2f_1u  _ZGVnN4v_exp2f_1u  -f
 logf      _ZGVnN4v_logf
-sinf      _ZGVnN4v_sinf
+sinf      _ZGVnN4v_sinf      -z
 cosf      _ZGVnN4v_cosf
 powf      _ZGVnN4vv_powf     -f
 EOF

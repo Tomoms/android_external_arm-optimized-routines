@@ -9,9 +9,7 @@
 #include "pl_sig.h"
 #include "pl_test.h"
 
-#define P(i) __sv_log2f_poly[i]
-
-static struct
+static const struct data
 {
   float poly_02468[5];
   float poly_1357[4];
@@ -45,40 +43,36 @@ special_case (svfloat32_t x, svfloat32_t y, svbool_t cmp)
 				   want 0x1.a9be8p-2.  */
 svfloat32_t SV_NAME_F1 (log2) (svfloat32_t x, const svbool_t pg)
 {
-  svuint32_t u = svreinterpret_u32_f32 (x);
-  svbool_t special = svcmpge_n_u32 (pg, svsub_n_u32_x (pg, u, Min), Thres);
+  const struct data *d = ptr_barrier (&data);
+
+  svuint32_t u = svreinterpret_u32 (x);
+  svbool_t special = svcmpge (pg, svsub_x (pg, u, Min), Thres);
 
   /* x = 2^n * (1+r), where 2/3 < 1+r < 4/3.  */
-  u = svsub_n_u32_x (pg, u, Off);
-  svfloat32_t n
-      = svcvt_f32_s32_x (pg, svasr_n_s32_x (pg, svreinterpret_s32_u32 (u),
-					    23)); /* Sign-extend.  */
-  u = svand_n_u32_x (pg, u, MantissaMask);
-  u = svadd_n_u32_x (pg, u, Off);
-  svfloat32_t r = svsub_n_f32_x (pg, svreinterpret_f32_u32 (u), 1.0f);
+  u = svsub_x (pg, u, Off);
+  svfloat32_t n = svcvt_f32_x (
+      pg, svasr_x (pg, svreinterpret_s32 (u), 23)); /* Sign-extend.  */
+  u = svand_x (pg, u, MantissaMask);
+  u = svadd_x (pg, u, Off);
+  svfloat32_t r = svsub_x (pg, svreinterpret_f32 (u), 1.0f);
 
   /* y = log2(1+r) + n.  */
-  svfloat32_t r2 = svmul_f32_x (pg, r, r);
+  svfloat32_t r2 = svmul_x (pg, r, r);
 
   /* Evaluate polynomial using pairwise Horner scheme.  */
-  svfloat32_t p_1357 = svld1rq_f32 (pg, &data.poly_1357[0]);
-  svfloat32_t q_01
-      = svmla_lane_f32 (sv_f32 (data.poly_02468[0]), r, p_1357, 0);
-  svfloat32_t q_23
-      = svmla_lane_f32 (sv_f32 (data.poly_02468[1]), r, p_1357, 1);
-  svfloat32_t q_45
-      = svmla_lane_f32 (sv_f32 (data.poly_02468[2]), r, p_1357, 2);
-  svfloat32_t q_67
-      = svmla_lane_f32 (sv_f32 (data.poly_02468[3]), r, p_1357, 3);
-  svfloat32_t y = svmla_f32_x (pg, q_67, r2, sv_f32 (data.poly_02468[4]));
-  y = svmla_f32_x (pg, q_45, r2, y);
-  y = svmla_f32_x (pg, q_23, r2, y);
-  y = svmla_f32_x (pg, q_01, r2, y);
-  y = svmla_f32_x (pg, n, r, y);
+  svfloat32_t p_1357 = svld1rq (svptrue_b32 (), &d->poly_1357[0]);
+  svfloat32_t q_01 = svmla_lane (sv_f32 (d->poly_02468[0]), r, p_1357, 0);
+  svfloat32_t q_23 = svmla_lane (sv_f32 (d->poly_02468[1]), r, p_1357, 1);
+  svfloat32_t q_45 = svmla_lane (sv_f32 (d->poly_02468[2]), r, p_1357, 2);
+  svfloat32_t q_67 = svmla_lane (sv_f32 (d->poly_02468[3]), r, p_1357, 3);
+  svfloat32_t y = svmla_x (pg, q_67, r2, sv_f32 (d->poly_02468[4]));
+  y = svmla_x (pg, q_45, r2, y);
+  y = svmla_x (pg, q_23, r2, y);
+  y = svmla_x (pg, q_01, r2, y);
 
   if (unlikely (svptest_any (pg, special)))
-    return special_case (x, y, special);
-  return y;
+    return special_case (x, svmla_x (svnot_z (pg, special), n, r, y), special);
+  return svmla_x (pg, n, r, y);
 }
 
 PL_SIG (SV, F, 1, log2, 0.01, 11.1)

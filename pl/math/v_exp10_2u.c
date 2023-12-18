@@ -7,7 +7,6 @@
 
 #include "mathlib.h"
 #include "v_math.h"
-#include "estrin.h"
 #include "pl_sig.h"
 #include "pl_test.h"
 
@@ -16,7 +15,7 @@
 /* Value of n above which scale overflows even with special treatment.  */
 #define ScaleBound 163840.0 /* 1280.0 * N.  */
 
-const static volatile struct
+const static struct data
 {
   float64x2_t poly[4];
   float64x2_t log10_2, log2_10_hi, log2_10_lo, shift;
@@ -40,9 +39,7 @@ const static volatile struct
 #endif
 };
 
-#define C(i) data.poly[i]
 #define N (1 << V_EXP_TABLE_BITS)
-#define Tab __v_exp_data
 #define IndexMask v_u64 (N - 1)
 
 #if WANT_SIMD_EXCEPT
@@ -51,7 +48,7 @@ const static volatile struct
 # define BigBound v_u64 (0x4070000000000000)  /* asuint64 (0x1p8).  */
 # define Thres v_u64 (0x2070000000000000)     /* BigBound - TinyBound.  */
 
-static inline float64x2_t VPCS_ATTR
+static float64x2_t VPCS_ATTR NOINLINE
 special_case (float64x2_t x, float64x2_t y, uint64x2_t cmp)
 {
   /* If fenv exceptions are to be triggered correctly, fall back to the scalar
@@ -66,15 +63,16 @@ special_case (float64x2_t x, float64x2_t y, uint64x2_t cmp)
 # define SpecialBias1 v_u64 (0x7000000000000000)  /* 0x1p769.  */
 # define SpecialBias2 v_u64 (0x3010000000000000)  /* 0x1p-254.  */
 
-static float64x2_t VPCS_ATTR NOINLINE
-special_case (float64x2_t s, float64x2_t y, float64x2_t n)
+static inline float64x2_t VPCS_ATTR
+special_case (float64x2_t s, float64x2_t y, float64x2_t n,
+	      const struct data *d)
 {
   /* 2^(n/N) may overflow, break it up into s1*s2.  */
   uint64x2_t b = vandq_u64 (vcltzq_f64 (n), SpecialOffset);
   float64x2_t s1 = vreinterpretq_f64_u64 (vsubq_u64 (SpecialBias1, b));
   float64x2_t s2 = vreinterpretq_f64_u64 (
       vaddq_u64 (vsubq_u64 (vreinterpretq_u64_f64 (s), SpecialBias2), b));
-  uint64x2_t cmp = vcagtq_f64 (n, data.scale_thresh);
+  uint64x2_t cmp = vcagtq_f64 (n, d->scale_thresh);
   float64x2_t r1 = vmulq_f64 (s1, s1);
   float64x2_t r0 = vmulq_f64 (vfmaq_f64 (s2, y, s2), s1);
   return vbslq_f64 (cmp, r1, r0);
@@ -88,6 +86,7 @@ special_case (float64x2_t s, float64x2_t y, float64x2_t n)
 				       want 0x1.f8dab6d7fed0ap+5.  */
 float64x2_t VPCS_ATTR V_NAME_D1 (exp10) (float64x2_t x)
 {
+  const struct data *d = ptr_barrier (&data);
   uint64x2_t cmp;
 #if WANT_SIMD_EXCEPT
   /* If any lanes are special, mask them with 1 and retain a copy of x to allow
@@ -99,35 +98,38 @@ float64x2_t VPCS_ATTR V_NAME_D1 (exp10) (float64x2_t x)
   if (unlikely (v_any_u64 (cmp)))
     x = vbslq_f64 (cmp, v_f64 (1), x);
 #else
-  cmp = vcageq_f64 (x, data.special_bound);
+  cmp = vcageq_f64 (x, d->special_bound);
 #endif
 
   /* n = round(x/(log10(2)/N)).  */
-  float64x2_t z = vfmaq_f64 (data.shift, x, data.log10_2);
+  float64x2_t z = vfmaq_f64 (d->shift, x, d->log10_2);
   uint64x2_t u = vreinterpretq_u64_f64 (z);
-  float64x2_t n = vsubq_f64 (z, data.shift);
+  float64x2_t n = vsubq_f64 (z, d->shift);
 
   /* r = x - n*log10(2)/N.  */
   float64x2_t r = x;
-  r = vfmsq_f64 (r, data.log2_10_hi, n);
-  r = vfmsq_f64 (r, data.log2_10_lo, n);
+  r = vfmsq_f64 (r, d->log2_10_hi, n);
+  r = vfmsq_f64 (r, d->log2_10_lo, n);
 
   uint64x2_t e = vshlq_n_u64 (u, 52 - V_EXP_TABLE_BITS);
   uint64x2_t i = vandq_u64 (u, IndexMask);
 
   /* y = exp10(r) - 1 ~= C0 r + C1 r^2 + C2 r^3 + C3 r^4.  */
   float64x2_t r2 = vmulq_f64 (r, r);
-  float64x2_t y = vmulq_f64 (r, ESTRIN_3 (r, r2, C));
+  float64x2_t p = vfmaq_f64 (d->poly[0], r, d->poly[1]);
+  float64x2_t y = vfmaq_f64 (d->poly[2], r, d->poly[3]);
+  p = vfmaq_f64 (p, y, r2);
+  y = vmulq_f64 (r, p);
 
   /* s = 2^(n/N).  */
-  u = v_lookup_u64 (Tab, i);
+  u = v_lookup_u64 (__v_exp_data, i);
   float64x2_t s = vreinterpretq_f64_u64 (vaddq_u64 (u, e));
 
   if (unlikely (v_any_u64 (cmp)))
 #if WANT_SIMD_EXCEPT
     return special_case (xm, vfmaq_f64 (s, y, s), cmp);
 #else
-    return special_case (s, y, n);
+    return special_case (s, y, n, d);
 #endif
 
   return vfmaq_f64 (s, y, s);
@@ -137,9 +139,6 @@ PL_SIG (S, D, 1, exp10, -9.9, 9.9)
 PL_SIG (V, D, 1, exp10, -9.9, 9.9)
 PL_TEST_ULP (V_NAME_D1 (exp10), 1.15)
 PL_TEST_EXPECT_FENV (V_NAME_D1 (exp10), WANT_SIMD_EXCEPT)
-PL_TEST_INTERVAL (V_NAME_D1 (exp10), 0, SpecialBound, 5000)
-PL_TEST_INTERVAL (V_NAME_D1 (exp10), SpecialBound, ScaleBound, 5000)
-PL_TEST_INTERVAL (V_NAME_D1 (exp10), ScaleBound, inf, 10000)
-PL_TEST_INTERVAL (V_NAME_D1 (exp10), -0, -SpecialBound, 5000)
-PL_TEST_INTERVAL (V_NAME_D1 (exp10), -SpecialBound, -ScaleBound, 5000)
-PL_TEST_INTERVAL (V_NAME_D1 (exp10), -ScaleBound, -inf, 10000)
+PL_TEST_SYM_INTERVAL (V_NAME_D1 (exp10), 0, SpecialBound, 5000)
+PL_TEST_SYM_INTERVAL (V_NAME_D1 (exp10), SpecialBound, ScaleBound, 5000)
+PL_TEST_SYM_INTERVAL (V_NAME_D1 (exp10), ScaleBound, inf, 10000)

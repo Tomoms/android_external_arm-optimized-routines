@@ -6,11 +6,11 @@
  */
 
 #include "sv_math.h"
-#include "sv_estrinf.h"
+#include "poly_sve_f32.h"
 #include "pl_sig.h"
 #include "pl_test.h"
 
-static struct
+static const struct data
 {
   float poly[5];
   float shift, thres;
@@ -26,8 +26,6 @@ static struct
   .thres = 0x1.5d5e2ap+6f,
 };
 
-#define C(i) sv_f32 (data.poly[i])
-
 static svfloat32_t NOINLINE
 special_case (svfloat32_t x, svfloat32_t y, svbool_t special)
 {
@@ -41,28 +39,29 @@ special_case (svfloat32_t x, svfloat32_t y, svbool_t special)
 				  want 0x1.ba7ebp+0.  */
 svfloat32_t SV_NAME_F1 (exp2) (svfloat32_t x, const svbool_t pg)
 {
+  const struct data *d = ptr_barrier (&data);
   /* exp2(x) = 2^n (1 + poly(r)), with 1 + poly(r) in [1/sqrt(2),sqrt(2)]
     x = n + r, with r in [-1/2, 1/2].  */
-  svfloat32_t shift = sv_f32 (data.shift);
-  svfloat32_t z = svadd_f32_x (pg, x, shift);
-  svfloat32_t n = svsub_f32_x (pg, z, shift);
-  svfloat32_t r = svsub_f32_x (pg, x, n);
+  svfloat32_t shift = sv_f32 (d->shift);
+  svfloat32_t z = svadd_x (pg, x, shift);
+  svfloat32_t n = svsub_x (pg, z, shift);
+  svfloat32_t r = svsub_x (pg, x, n);
 
-  svbool_t special = svacgt_n_f32 (pg, x, data.thres);
-  svfloat32_t scale = svexpa_f32 (svreinterpret_u32_f32 (z));
+  svbool_t special = svacgt (pg, x, d->thres);
+  svfloat32_t scale = svexpa (svreinterpret_u32 (z));
 
   /* Polynomial evaluation: poly(r) ~ exp2(r)-1.
-     Evaluate polynomial use hybrid scheme - offset variant of ESTRIN macro for
+     Evaluate polynomial use hybrid scheme - offset ESTRIN by 1 for
      coefficients 1 to 4, and apply most significant coefficient directly.  */
-  svfloat32_t r2 = svmul_f32_x (pg, r, r);
-  svfloat32_t p14 = ESTRIN_3_ (pg, r, r2, C, 1);
-  svfloat32_t p0 = svmul_f32_x (pg, r, C (0));
-  svfloat32_t poly = svmla_f32_x (pg, p0, r2, p14);
+  svfloat32_t r2 = svmul_x (pg, r, r);
+  svfloat32_t p14 = sv_pairwise_poly_3_f32_x (pg, r, r2, d->poly + 1);
+  svfloat32_t p0 = svmul_x (pg, r, d->poly[0]);
+  svfloat32_t poly = svmla_x (pg, p0, r2, p14);
 
   if (unlikely (svptest_any (pg, special)))
-    return special_case (x, svmla_f32_x (pg, scale, scale, poly), special);
+    return special_case (x, svmla_x (pg, scale, scale, poly), special);
 
-  return svmla_f32_x (pg, scale, scale, poly);
+  return svmla_x (pg, scale, scale, poly);
 }
 
 PL_SIG (SV, F, 1, exp2, -9.9, 9.9)

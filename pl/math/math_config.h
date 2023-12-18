@@ -103,6 +103,22 @@
     __ptr;                                                                    \
   })
 
+/* Symbol renames to avoid libc conflicts.  */
+#define __math_oflowf arm_math_oflowf
+#define __math_uflowf arm_math_uflowf
+#define __math_may_uflowf arm_math_may_uflowf
+#define __math_divzerof arm_math_divzerof
+#define __math_oflow arm_math_oflow
+#define __math_uflow arm_math_uflow
+#define __math_may_uflow arm_math_may_uflow
+#define __math_divzero arm_math_divzero
+#define __math_invalidf arm_math_invalidf
+#define __math_invalid arm_math_invalid
+#define __math_check_oflow arm_math_check_oflow
+#define __math_check_uflow arm_math_check_uflow
+#define __math_check_oflowf arm_math_check_oflowf
+#define __math_check_uflowf arm_math_check_uflowf
+
 #if HAVE_FAST_ROUND
 /* When set, the roundtoint and converttoint functions are provided with
    the semantics documented below.  */
@@ -330,9 +346,25 @@ check_uflowf (float x)
 
 extern const struct erff_data
 {
-  float erff_poly_A[6];
-  float erff_poly_B[7];
+  struct
+  {
+    float erf, scale;
+  } tab[513];
 } __erff_data HIDDEN;
+
+extern const struct sv_erff_data
+{
+  float erf[513];
+  float scale[513];
+} __sv_erff_data HIDDEN;
+
+extern const struct erfcf_data
+{
+  struct
+  {
+    float erfc, scale;
+  } tab[645];
+} __erfcf_data HIDDEN;
 
 /* Data for logf and log10f.  */
 #define LOGF_TABLE_BITS 4
@@ -401,45 +433,27 @@ extern const uint64_t __v_exp_tail_data[1 << V_EXP_TAIL_TABLE_BITS] HIDDEN;
 #define V_EXP_TABLE_BITS 7
 extern const uint64_t __v_exp_data[1 << V_EXP_TABLE_BITS] HIDDEN;
 
-#define ERFC_NUM_INTERVALS 20
-#define ERFC_POLY_ORDER 12
+extern const struct erf_data
+{
+  struct
+  {
+    double erf, scale;
+  } tab[769];
+} __erf_data HIDDEN;
+
+extern const struct sv_erf_data
+{
+  double erf[769];
+  double scale[769];
+} __sv_erf_data HIDDEN;
+
 extern const struct erfc_data
 {
-  double interval_bounds[ERFC_NUM_INTERVALS + 1];
-  double poly[ERFC_NUM_INTERVALS][ERFC_POLY_ORDER + 1];
+  struct
+  {
+    double erfc, scale;
+  } tab[3488];
 } __erfc_data HIDDEN;
-extern const struct v_erfc_data
-{
-  double interval_bounds[ERFC_NUM_INTERVALS + 1];
-  double poly[ERFC_NUM_INTERVALS + 1][ERFC_POLY_ORDER + 1];
-} __v_erfc_data HIDDEN;
-
-#define ERFCF_POLY_NCOEFFS 16
-extern const struct erfcf_poly_data
-{
-  double poly[4][ERFCF_POLY_NCOEFFS];
-  double poly_T[ERFCF_POLY_NCOEFFS][4];
-} __erfcf_poly_data HIDDEN;
-
-#define V_EXP_TAIL_TABLE_BITS 8
-extern const uint64_t __v_exp_tail_data[1 << V_EXP_TAIL_TABLE_BITS] HIDDEN;
-
-#define V_EXP_TABLE_BITS 7
-extern const uint64_t __v_exp_data[1 << V_EXP_TABLE_BITS] HIDDEN;
-
-#define V_ERF_NINTS 49
-#define V_ERF_NCOEFFS 10
-extern const struct v_erf_data
-{
-  double shifts[V_ERF_NINTS];
-  double coeffs[V_ERF_NCOEFFS][V_ERF_NINTS];
-} __v_erf_data HIDDEN;
-
-#define V_ERFF_NCOEFFS 7
-extern const struct v_erff_data
-{
-  float coeffs[V_ERFF_NCOEFFS][2];
-} __v_erff_data HIDDEN;
 
 #define ATAN_POLY_NCOEFFS 20
 extern const struct atan_poly_data
@@ -493,7 +507,6 @@ extern const struct log1p_data
 } __log1p_data HIDDEN;
 
 #define LOG1PF_2U5
-#define V_LOG1PF_2U5
 #define LOG1PF_NCOEFFS 9
 extern const struct log1pf_data
 {
@@ -514,8 +527,10 @@ extern const struct v_log2_data
 {
   double poly[5];
   double invln2;
-  double invc[1 << V_LOG2_TABLE_BITS];
-  double log2c[1 << V_LOG2_TABLE_BITS];
+  struct
+  {
+    double invc, log2c;
+  } table[1 << V_LOG2_TABLE_BITS];
 } __v_log2_data HIDDEN;
 
 #define V_LOG10_TABLE_BITS 7
@@ -523,30 +538,23 @@ extern const struct v_log10_data
 {
   double poly[5];
   double invln10, log10_2;
-  double invc[1 << V_LOG10_TABLE_BITS];
-  double log10c[1 << V_LOG10_TABLE_BITS];
+  struct
+  {
+    double invc, log10c;
+  } table[1 << V_LOG10_TABLE_BITS];
 } __v_log10_data HIDDEN;
 
 /* Some data for SVE powf's internal exp and log.  */
-#define SV_POWF_EXP2_TABLE_BITS 5
-#define SV_POWF_EXP2_POLY_ORDER 3
-#define SV_POWF_EXP2_N (1 << SV_POWF_EXP2_TABLE_BITS)
-#define SV_POWF_EXP2_SCALE ((double) SV_POWF_EXP2_N)
-extern const struct sv_powf_exp2_data
+#define V_POWF_EXP2_TABLE_BITS 5
+#define V_POWF_EXP2_N (1 << V_POWF_EXP2_TABLE_BITS)
+#define V_POWF_LOG2_TABLE_BITS 5
+#define V_POWF_LOG2_N (1 << V_POWF_LOG2_TABLE_BITS)
+extern const struct v_powf_data
 {
-  uint64_t tab[SV_POWF_EXP2_N];
-  double poly[SV_POWF_EXP2_POLY_ORDER];
-} __sv_powf_exp2_data HIDDEN;
-
-#define SV_POWF_LOG2_TABLE_BITS 5
-#define SV_POWF_LOG2_POLY_ORDER 4
-#define SV_POWF_LOG2_N (1 << SV_POWF_LOG2_TABLE_BITS)
-extern const struct sv_powf_log2_data
-{
-  double invc[SV_POWF_LOG2_N];
-  double logc[SV_POWF_LOG2_N];
-  double poly[SV_POWF_LOG2_POLY_ORDER];
-} __sv_powf_log2_data HIDDEN;
+  double invc[V_POWF_LOG2_N];
+  double logc[V_POWF_LOG2_N];
+  uint64_t scale[V_POWF_EXP2_N];
+} __v_powf_data HIDDEN;
 
 #define V_LOG_POLY_ORDER 6
 #define V_LOG_TABLE_BITS 7
@@ -555,8 +563,10 @@ extern const struct v_log_data
   /* Shared data for vector log and log-derived routines (e.g. asinh).  */
   double poly[V_LOG_POLY_ORDER - 1];
   double ln2;
-  double invc[1 << V_LOG_TABLE_BITS];
-  double logc[1 << V_LOG_TABLE_BITS];
+  struct
+  {
+    double invc, logc;
+  } table[1 << V_LOG_TABLE_BITS];
 } __v_log_data HIDDEN;
 
 #define EXPM1F_POLY_ORDER 5
@@ -594,24 +604,18 @@ extern const double __asin_poly[ASIN_POLY_ORDER + 1] HIDDEN;
 
 /* Some data for AdvSIMD and SVE pow's internal exp and log.  */
 #define V_POW_EXP_TABLE_BITS 8
-#define V_POW_EXP_POLY_ORDER 4
 extern const struct v_pow_exp_data
 {
-  double invln2N;
-  double shift;
-  double negln2hiN;
-  double negln2loN;
-  double poly[4]; /* Last four coefficients.  */
+  double poly[3];
+  double n_over_ln2, ln2_over_n_hi, ln2_over_n_lo, shift;
   uint64_t sbits[1 << V_POW_EXP_TABLE_BITS];
 } __v_pow_exp_data HIDDEN;
 
 #define V_POW_LOG_TABLE_BITS 7
-#define V_POW_LOG_POLY_ORDER 8
 extern const struct v_pow_log_data
 {
-  double ln2hi;
-  double ln2lo;
-  double poly[V_POW_LOG_POLY_ORDER - 1]; /* First coefficient is 1.  */
+  double poly[7]; /* First coefficient is 1.  */
+  double ln2_hi, ln2_lo;
   double invc[1 << V_POW_LOG_TABLE_BITS];
   double logc[1 << V_POW_LOG_TABLE_BITS];
   double logctail[1 << V_POW_LOG_TABLE_BITS];

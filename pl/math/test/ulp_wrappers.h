@@ -6,7 +6,9 @@
  * SPDX-License-Identifier: MIT OR Apache-2.0 WITH LLVM-exception
  */
 
+#define _GNU_SOURCE
 #include <stdbool.h>
+#include <arm_neon.h>
 
 #if USE_MPFR
 static int sincos_mpfr_sin(mpfr_t y, const mpfr_t x, mpfr_rnd_t r) {
@@ -110,8 +112,29 @@ DECL_POW_INT_REF(ref_powi, long double, double, int)
 
 #include "ulp_wrappers_gen.h"
 
+float v_sincosf_sin(float x) { float32x4_t s, c; _ZGVnN4vl4l4_sincosf(vdupq_n_f32(x), &s, &c); return s[0]; }
+float v_sincosf_cos(float x) { float32x4_t s, c; _ZGVnN4vl4l4_sincosf(vdupq_n_f32(x), &s, &c); return c[0]; }
+float v_cexpif_sin(float x) { return _ZGVnN4v_cexpif(vdupq_n_f32(x)).val[0][0]; }
+float v_cexpif_cos(float x) { return _ZGVnN4v_cexpif(vdupq_n_f32(x)).val[1][0]; }
+
+double v_sincos_sin(double x) { float64x2_t s, c; _ZGVnN2vl8l8_sincos(vdupq_n_f64(x), &s, &c); return s[0]; }
+double v_sincos_cos(double x) { float64x2_t s, c; _ZGVnN2vl8l8_sincos(vdupq_n_f64(x), &s, &c); return c[0]; }
+double v_cexpi_sin(double x) { return _ZGVnN2v_cexpi(vdupq_n_f64(x)).val[0][0]; }
+double v_cexpi_cos(double x) { return _ZGVnN2v_cexpi(vdupq_n_f64(x)).val[1][0]; }
+
 #if WANT_SVE_MATH
-static float Z_sv_powi(float x, float y) { return svretf(_ZGVsMxvv_powi(svargf(x), svdup_n_s32((int)round(y)), svptrue_b32())); }
-static double Z_sv_powk(double x, double y) { return svretd(_ZGVsMxvv_powk(svargd(x), svdup_n_s64((long)round(y)), svptrue_b64())); }
+static float Z_sv_powi(float x, float y) { return svretf(_ZGVsMxvv_powi(svargf(x), svdup_s32((int)round(y)), svptrue_b32())); }
+static double Z_sv_powk(double x, double y) { return svretd(_ZGVsMxvv_powk(svargd(x), svdup_s64((long)round(y)), svptrue_b64())); }
+
+float sv_sincosf_sin(float x) { float s[svcntw()], c[svcntw()]; _ZGVsMxvl4l4_sincosf(svdup_f32(x), s, c, svptrue_b32()); return s[0]; }
+float sv_sincosf_cos(float x) { float s[svcntw()], c[svcntw()]; _ZGVsMxvl4l4_sincosf(svdup_f32(x), s, c, svptrue_b32()); return c[0]; }
+float sv_cexpif_sin(float x) { return svretf(svget2(_ZGVsMxv_cexpif(svdup_f32(x), svptrue_b32()), 0)); }
+float sv_cexpif_cos(float x) { return svretf(svget2(_ZGVsMxv_cexpif(svdup_f32(x), svptrue_b32()), 1)); }
+
+double sv_sincos_sin(double x) { double s[svcntd()], c[svcntd()]; _ZGVsMxvl8l8_sincos(svdup_f64(x), s, c, svptrue_b64()); return s[0]; }
+double sv_sincos_cos(double x) { double s[svcntd()], c[svcntd()]; _ZGVsMxvl8l8_sincos(svdup_f64(x), s, c, svptrue_b64()); return c[0]; }
+double sv_cexpi_sin(double x) { return svretd(svget2(_ZGVsMxv_cexpi(svdup_f64(x), svptrue_b64()), 0)); }
+double sv_cexpi_cos(double x) { return svretd(svget2(_ZGVsMxv_cexpi(svdup_f64(x), svptrue_b64()), 1)); }
+
 #endif
 // clang-format on
