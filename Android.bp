@@ -21,7 +21,7 @@ cc_defaults {
     cflags: [
         "-Werror",
         "-Wno-unused-parameter",
-        "-O2",
+        "-Wno-literal-range",
         "-ffp-contract=fast",
         "-fno-math-errno",
 
@@ -37,9 +37,14 @@ cc_defaults {
         // BSD libm doesn't set errno, and bionic was based on the BSDs.
         // https://github.com/ARM-software/optimized-routines/issues/16#issuecomment-572009659
         "-DWANT_ERRNO=0",
-        // TODO: we may want the vector code in future, but it's not ready yet.
-        "-DWANT_VMATH=0",
     ],
+    arch: {
+        arm: {
+	    cflags: [
+	        "-DWANT_VMATH=0",
+            ],
+        },
+    },
     local_include_dirs: ["math/include"],
 }
 
@@ -87,6 +92,9 @@ cc_library_static {
         arm64: {
             cflags: [
                 "-DHAVE_FAST_FMA=1",
+            ],
+            srcs: [
+                "math/aarch64/*.c",
             ],
         },
     },
